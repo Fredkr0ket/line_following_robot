@@ -29,6 +29,29 @@ tof.start()
 
 # ------------------------------------
 
+# ---------- PID CONTROLLER ----------
+class PID:
+    def __init__(self, kp, ki, kd):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.prev_error = 0
+        self.integral = 0
+
+    def update(self, error):
+        self.integral += error
+        derivative = error - self.prev_error
+
+        output = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+
+        self.prev_error = error
+        return output
+
+pid = PID(kp=20, ki=0, kd=10)
+base_speed = 50
+# ------------------------------------
+
+
 # ---------- CALIBRATION ----------
 def calibrate_tof_sensor(distance):
     print("STARTING ToF CALIBRATION")
@@ -101,12 +124,28 @@ def data_parser():
             results.append(0)
     return results
 
+# Convert IR data into line error for PID
+weights = [-2, -1, 0, 1, 2]
+
+def get_line_error(line):
+    total = 0
+    count = 0
+
+    for i in range(5):
+        if line[i] == 1:
+            total += weights[i]
+            count += 1
+
+    if count == 0:
+        return None  # line lost
+
+    return total / count
+
 def get_ir_sensor_data():
     line = data_parser()
     print("Line: ", line)
     return line
-
-
+# ------------------------------------
 
 
 # ---------- TOF SENSOR ----------
@@ -125,9 +164,27 @@ def get_tof_sensor_data():
 # ----------------------------
 
 
-# ---------- MAIN ----------
+# ---------- MAIN LOOP ----------
 while True:
-    get_ir_sensor_data()
-    get_tof_sensor_data()
-    time.sleep_ms(1000)
 
+    # IR SENSOR
+    line = get_ir_sensor_data()
+    error = get_line_error(line)
+
+    if error is not None:
+
+        correction = pid.update(error)
+
+        left_motor  = base_speed - correction
+        right_motor = base_speed + correction
+
+        print("Error:", error, "Correction:", correction)
+
+    else:
+        print("Line lost")
+        ## move backwards
+
+    # TOF SENSOR
+    get_tof_sensor_data()
+
+    time.sleep_ms(1000)
