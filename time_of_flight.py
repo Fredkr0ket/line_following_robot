@@ -12,6 +12,7 @@ scl_pin = Pin(22)  # SCL pin
 i2c = I2C(0, sda=sda_pin, scl=scl_pin)
 
 print(i2c)
+print(i2c.scan())
 
 # Setup TOF sensor
 tof = VL53L0X(i2c)
@@ -55,3 +56,4 @@ while True:
     corrected_distance = distance - total_error # calculate the corrected distance 
     print("Distance:", corrected_distance, "mm") 
     time.sleep_ms(1000)
+    

@@ -4,12 +4,12 @@ from machine import Pin, ADC
 import time
 
 # Initialize analog pins of the infrared sensor array
-sensor_pins = [
+ir_sensor_pins = [
     ADC(Pin(13)),  # sensor 1 - far left
-    ADC(Pin(12)),  # sensor 2 - left
-    ADC(Pin(14)),  # sensor 3 - center
-    ADC(Pin(27)),  # sensor 4 - right
-    ADC(Pin(26)),  # sensor 5 - far right
+    ADC(Pin(14)),  # sensor 2 - left
+    ADC(Pin(27)),  # sensor 3 - center
+    ADC(Pin(26)),  # sensor 4 - right
+    ADC(Pin(25)),  # sensor 5 - far right
 ]
 
 for sensor in sensor_pins:
@@ -30,7 +30,7 @@ def calibrate_infrared_sensor(surface_name):
 
     # 50 iterations x 100ms = 5 seconds
     for _ in range(50):
-        for sensor in sensor_pins:
+        for sensor in ir_sensor_pins:
             total += sensor.read()  # add each sensor reading to total
             count += 1              # count every single reading
         time.sleep_ms(100)
@@ -56,11 +56,11 @@ print("Black average: ", black_average)
 print("Threshold:     ", threshold)
 print("=== CALIBRATION DONE ===")
 
-# HELPER FUNCTION
+# HELPER FUNCTIONsens
 # Reads all sensors and returns 0 for white and 1 for black
 def data_parser():
     results = []
-    for sensor in sensor_pins:
+    for sensor in ir_sensor_pins:
         reading = sensor.read()
         if reading < threshold:
             results.append(1)
