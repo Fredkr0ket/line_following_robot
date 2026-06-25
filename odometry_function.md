@@ -12,7 +12,7 @@ def turn(degrees):
     turns the amount of degrees given
 
 def remove_node(current_node):
-    move node from next_nodes from visited_nodes    
+    move node from next_nodes from visited_nodes
 
 
 nodes = {

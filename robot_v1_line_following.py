@@ -1,13 +1,12 @@
-# line_follower_robot.py
+# robot_v1_line_following.py
 # Programmer: Ferdo van Balen
 
+# ================== IMPORTS ==================
 from machine import Pin, PWM, I2C, ADC
 from VL53L0X import VL53L0X
 import time
 
-# ============================================================
-# MOTOR DRIVER
-# ============================================================
+# ================== MOTOR DRIVER ==================
 class Motor:
     def __init__(self, pin_a, pin_b, freq=1000, reversed=False):
         self.a = PWM(Pin(pin_a), freq=freq)
@@ -15,11 +14,9 @@ class Motor:
         self.reversed = reversed
 
     def run(self, speed):
-        # allow PID negative values
         if self.reversed:
             speed = -speed
 
-        # convert -100..100 → PWM duty
         speed = max(-100, min(100, speed))
         duty = int(abs(speed) * 10.23)
 
@@ -44,9 +41,9 @@ class Motor:
         self.b.duty(1023)
 
 
-# Motors
-left_motor = Motor(pin_a=18, pin_b=19)
-right_motor = Motor(pin_a=17, pin_b=5, reversed=True)
+# ================== Motors ==================
+left_motor  = Motor(pin_a=18, pin_b=19, reversed=True)
+right_motor = Motor(pin_a=17, pin_b=5)
 
 def set_motors(left_speed, right_speed):
     left_motor.run(left_speed)
@@ -56,30 +53,24 @@ def stop():
     left_motor.stop()
     right_motor.stop()
 
-# ============================================================
-# IR SENSOR SETUP
-# ============================================================
+# ================== IR SENSOR SETUP ==================
 ir_sensors = [
-    ADC(Pin(13)),
-    ADC(Pin(12)),
-    ADC(Pin(14)),
-    ADC(Pin(27)),
-    ADC(Pin(26)),
+    ADC(Pin(13)),  # sensor 1 - far left
+    ADC(Pin(14)),  # sensor 2 - left
+    ADC(Pin(27)),  # sensor 3 - center
+    ADC(Pin(26)),  # sensor 4 - right
+    ADC(Pin(25)),  # sensor 5 - far right
 ]
 
 for s in ir_sensors:
     s.atten(ADC.ATTN_11DB)
 
-# ============================================================
 # TOF SENSOR SETUP
-# ============================================================
 i2c = I2C(0, sda=Pin(21), scl=Pin(22))
 tof = VL53L0X(i2c)
 tof.start()
 
-# ============================================================
-# PID CONTROLLER
-# ============================================================
+# ================== PID CONTROLLER ==================
 class PID:
     def __init__(self, kp, ki, kd):
         self.kp = kp
@@ -102,16 +93,16 @@ class PID:
         return output
 
 
-pid = PID(kp=18, ki=0, kd=10)
-base_speed = 45
+pid = PID(kp=10, ki=0, kd=18)
+base_speed = 100
 
-# ============================================================
-# IR CALIBRATION
-# ============================================================
+# ================== IR CALIBRATION ==================
 def calibrate_ir(surface_name):
-    print("IR CALIBRATION START")
-    print("Place sensors on:", surface_name)
+    print("STARTING IR CALIBRATION")
+    print(f"Hold sensor above {surface_name} surface!")
+    print("Starting in 3 seconds...")
     time.sleep(3)
+    print(f"Collecting {surface_name} data for 5 seconds!")
 
     total = 0
     count = 0
@@ -133,15 +124,14 @@ black = calibrate_ir("BLACK")
 threshold = white + (black - white) // 2
 print("Threshold:", threshold)
 
-# ============================================================
-# IR PROCESSING
-# ============================================================
-weights = [-2, -1, 0, 1, 2]
+# ================== IR PROCESSING ==================
+weights = [2, 1, 0, -1, -2]
 
 def read_line():
     line = []
     for s in ir_sensors:
-        line.append(1 if s.read() < threshold else 0)
+        print(s.read())
+        line.append(1 if s.read() < 3000 else 0)
     return line
 
 
@@ -155,15 +145,18 @@ def get_error(line):
             count += 1
 
     if count == 0:
-        return None
+        return 0 # TEST!!! should return None if no line is being seen (using 0 because test line is to thin to alwas be seen by one sensor)
+        #return None
 
     return total / count
 
-# ============================================================
-# TOF CALIBRATION
-# ============================================================
+# ================== TOF CALIBRATION ==================
 def calibrate_tof(distance):
-    print("TOF CALIBRATION:", distance)
+    print("STARTING ToF CALIBRATION")
+    print(f"Place robot {distance}mm infront of a white object")
+    print("Calibration starting in 5 seconds...")
+    time.sleep(5)
+    print("Taking data from sensor data for 5 seconds")
     error_sum = 0
 
     for _ in range(50):
@@ -180,9 +173,7 @@ tof_error = (err_100 + err_300) // 2
 def get_distance():
     return tof.read() - tof_error
 
-# ============================================================
-# MAIN LOOP (PID LINE FOLLOWING)
-# ============================================================
+# ================== MAIN LOOP (PID LINE FOLLOWING) ==================
 while True:
 
     # ---------- IR ----------
@@ -194,6 +185,13 @@ while True:
     if error is not None:
 
         correction = pid.update(error)
+
+        print(f"Correction normal: {correction}")
+
+        speed_factor = base_speed / 45
+        print(f"Speed factor: {speed_factor}")
+        correction *= speed_factor
+        print(f"Corrected correction: {correction}")
 
         left_speed = base_speed - correction
         right_speed = base_speed + correction
@@ -218,3 +216,4 @@ while True:
     print("Distance:", distance, "mm")
 
     time.sleep_ms(100)
+
