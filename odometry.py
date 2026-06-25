@@ -1,6 +1,9 @@
 from machine import Pin, PWM, I2C, ADC, Encoder
 from VL53L0X import VL53L0X
 import time
+from pathfinder import PathFinder
+
+path_finder = PathFinder()
 
 nodes = {
     "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
@@ -117,7 +120,11 @@ def turn(action, previous_yaw):
 
 
 def update_position(encoder_left, encoder_right, heading, previous_position):
-    average_distance = (encoder_left + encoder_right) / 2
+    encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
+    encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
+    encoder_distance_right = encoder_rotations_right * 157
+    encoder_distance_left = encoder_rotations_left * 157
+    average_distance = (encoder_distance_left + encoder_distance_right) / 2
     current_position = list()
     current_pos_y = 0
     current_pos_x = 0
@@ -136,16 +143,73 @@ def update_position(encoder_left, encoder_right, heading, previous_position):
     else:
         print("unknown heading")
     current_position = [current_pos_x, current_pos_y, previous_yaw]
+    encoder_left.value(0)
+    encoder_right.value(0)
     return current_position
 
-# def node_detection(current_position):
-#     for 
+def path_to_node(coord, position, encoder_left, encoder_right):
+    pos_x = position[0]
+    pos_y = position[1]
+    pos_yaw = position[2]
+    coord_x = coord[0]
+    coord_y = coord[1]
+
+    if coord_x == pos_x and coord_y > pos_y: # NORTH
+        if pos_yaw == 90:
+            turn("left", pos_yaw)
+        elif pos_yaw == 180:
+            turn("reverse", pos_yaw)
+        elif pos_yaw == 270:
+            turn("right", pos_yaw)
+        while coord_y > pos_y:
+            set_motors(45, 45)
+            position = update_position(encoder_left, encoder_right, "north", position)
+            pos_y = position[2]
+            time.sleep(100)
+
+    elif coord_x == pos_x and coord_y < pos_y: # SOUTH
+        if pos_yaw == 0:
+            turn("reverse", pos_yaw)
+        elif pos_yaw == 90:
+            turn("right", pos_yaw)
+        elif pos_yaw == 270:
+            turn("left", pos_yaw)
+
+    elif coord_y == pos_y and coord_x > pos_x: # WEST
+        if pos_yaw == 0:
+            turn("left", pos_yaw)
+        elif pos_yaw == 90:
+            turn("reverse", pos_yaw)
+        elif pos_yaw == 180:
+            turn("right", pos_yaw)
+
+    elif coord_y == pos_y and coord_x > pos_x: #EAST
+        if pos_yaw == 0:
+            turn("right", pos_yaw)
+        elif pos_yaw == 180:
+            turn("left", pos_yaw)
+        elif pos_yaw == 270:
+            turn("reverse", pos_yaw)
+    else:
+        print("Error with coords")
+
+
 
 while True:
-    print(f"previous position: {position}")
-    position[2] = turn("left", position[2])
-    print(f"updated position: {position}")
-    time.sleep(5)
+    path = path_finder.astar_path_as_object("A1", "E6", ["C2"])
+    for node, coord in path.items():
+        # CHECK IF NODES ARE ON THE SAME Y AND SAME X AXIS AND IF THE NODES IN THE MIDDLE CAN BE SKIPPED? OR IF THERE ARE OBSTACLES IN THE WAY
+        path_to_node(coord, position, encoder_left, encoder_right)
+        # POP NODE FROM OBJECT
+
+
+
+
+# while True:
+#     print(f"previous position: {position}")
+#     position[2] = turn("left", position[2])
+#     print(f"updated position: {position}")
+#     time.sleep(5)
 
 
     # -------- update position -------
