@@ -95,7 +95,32 @@ class PID:
 
 
 pid = PID(kp=10, ki=0, kd=18)
-base_speed = 100
+base_speed = 45
+
+# ================== LINE FOLLOWING ==================
+def line_follow():
+    line = read_line()
+    error = get_error(line)
+
+    if error is None:
+        stop()
+        return False
+
+    correction = pid.update(error)
+
+    # Scale correction to motor speed
+    correction *= base_speed / 45
+
+    left_speed = base_speed - correction
+    right_speed = base_speed + correction
+
+    # Clamp motor speeds
+    left_speed = max(0, min(100, left_speed))
+    right_speed = max(0, min(100, right_speed))
+
+    set_motors(left_speed, right_speed)
+
+    return True
 
 # ================== IR CALIBRATION ==================
 def calibrate_ir(surface_name):
@@ -185,15 +210,6 @@ encoder_right = Encoder(1, Pin(32, Pin.IN), Pin(33, Pin.IN))   # Create first en
 
 position = [0,0,0] # [x, y, yaw]
 
-# Nodes in millimeter
-nodes = {
-    "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
-    "D2":(745 ,515), "D1":(0,515),
-    "C3":(1485,365), "C2":(745,365), "C1":(0,365),
-    "B2":(1485,215), "B1":(745,215),
-    "A6":(1485,0), "A5":(745,0), "A4":(450,0), "A3":(300,0), "A2":(150,0), "A1":(0,0),
-}
-
 def turn(action):
     if action == "left":
         set_motors(-45, 45)
@@ -230,55 +246,21 @@ def update_position(encoder_left, encoder_right, heading, previous_position):
 # ================== MAIN LOOP (PID LINE FOLLOWING) ==================
 while True:
 
-    # ---------- IR ----------
-    line = read_line()
-    error = get_error(line)
-
-    print("Line:", line)
-
-    # ---------- ENCODER ----------
-    encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
-    encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
-
-    encoder_distance_right = encoder_rotations_right * 157
-    encoder_distance_left = encoder_rotations_left * 157
-    print(f"Rotations Rl: {encoder_rotations_left} Rr: {encoder_rotations_right}") #Print value of the first encoders rotations
-    print(f"Distance Rl: {encoder_distance_left} Rr: {encoder_distance_right}") #Print value of the first encoders rotations
-
-    if error is not None:
-
-        correction = pid.update(error)
-
-        print(f"Correction normal: {correction}")
-
-        speed_factor = base_speed / 45
-        print(f"Speed factor: {speed_factor}")
-        correction *= speed_factor
-        print(f"Corrected correction: {correction}")
-
-        left_speed = base_speed - correction
-        right_speed = base_speed + correction
-
-        # clamp speeds
-        left_speed = max(0, min(100, left_speed))
-        right_speed = max(0, min(100, right_speed))
-
-        set_motors(left_speed, right_speed)
-
-        print("Error:", error,
-              "Correction:", correction,
-              "L:", left_speed,
-              "R:", right_speed)
-
-    else:
-        stop()
+    # Drive forward while following the line
+    if not line_follow():
         print("Line lost")
+
+    # Read ToF
+    distance = get_distance()
+    print("Distance:", distance)
+
 
     # ---------- TOF ----------
     distance = get_distance()
     print("Distance:", distance, "mm")
 
-    time.sleep_ms(1000)
+    time.sleep_ms(50)
+
 
 
 

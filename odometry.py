@@ -1,9 +1,12 @@
+import machine
 from machine import Pin, PWM, I2C, ADC, Encoder
 from VL53L0X import VL53L0X
-import time
+import time, neopixel
 from pathfinder import PathFinder
 
 path_finder = PathFinder()
+
+np = neopixel.NeoPixel(machine.Pin(2), 1) # initialising the rgb
 
 nodes = {
     "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
@@ -12,6 +15,18 @@ nodes = {
     "B2":(1485,215), "B1":(745,215),
     "A6":(1485,0), "A5":(745,0), "A4":(450,0), "A3":(300,0), "A2":(150,0), "A1":(0,0),
 }
+
+ir_sensors = [
+    ADC(Pin(13)),  # sensor 1 - far left
+    ADC(Pin(14)),  # sensor 2 - left
+    ADC(Pin(27)),  # sensor 3 - center
+    ADC(Pin(26)),  # sensor 4 - right
+    ADC(Pin(25)),  # sensor 5 - far right
+]
+
+slow_down_distance = 50
+base_speed_robot = 70
+position = [1485,0,90] # [x, y, yaw]
 
 # ================== Motors ==================
 class Motor:
@@ -47,7 +62,94 @@ class Motor:
         self.a.duty(1023)
         self.b.duty(1023)
 
-position = [0,0,0] # [x, y, yaw]
+# ================== PID CONTROLLER ==================
+weights = [2, 1, 0, -1, -2]
+
+def read_line():
+    line = []
+    for s in ir_sensors:
+        print(s.read())
+        line.append(1 if s.read() < 3000 else 0)
+    return line
+
+def junction_detection():
+    line = read_line()
+    direction = False
+    if line == [0,0,1,1,1]:
+        direction = True
+    elif line == [1,1,1,0,0]:
+        direction = True
+    elif line == [0,1,1,1,0]:
+        direction = True
+    return direction
+
+
+def get_error(line):
+    total = 0
+    count = 0
+
+    for i in range(5):
+        if line[i] == 1:
+            total += weights[i]
+            count += 1
+
+    if count == 0:
+        return 0 # TEST!!! should return None if no line is being seen (using 0 because test line is to thin to alwas be seen by one sensor)
+        #return None
+
+    return total / count
+
+class PID:
+    def __init__(self, kp, ki, kd):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.prev_error = 0
+        self.integral = 0
+
+    def update(self, error):
+        self.integral += error
+        derivative = error - self.prev_error
+
+        output = (
+            self.kp * error +
+            self.ki * self.integral +
+            self.kd * derivative
+        )
+
+        self.prev_error = error
+        return output
+
+
+pid = PID(kp=10, ki=0, kd=18)
+
+
+# ================== LINE FOLLOWING ==================
+def line_follow(base_speed):
+    line = read_line()
+    error = get_error(line)
+
+    if error is None:
+        stop()
+        return False
+
+    correction = pid.update(error)
+
+    # Scale correction to motor speed
+    correction *= base_speed / 45
+
+    left_speed = base_speed - correction
+    right_speed = base_speed + correction
+
+    # Clamp motor speeds
+    left_speed = max(0, min(100, left_speed))
+    right_speed = max(0, min(100, right_speed))
+
+    set_motors(left_speed, right_speed)
+
+    return True
+
+
 left_motor  = Motor(pin_a=18, pin_b=19, reversed=True)
 right_motor = Motor(pin_a=17, pin_b=5)
 
@@ -147,7 +249,7 @@ def update_position(encoder_left, encoder_right, heading, previous_position):
     encoder_right.value(0)
     return current_position
 
-def path_to_node(coord, position, encoder_left, encoder_right):
+def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
     pos_x = position[0]
     pos_y = position[1]
     pos_yaw = position[2]
@@ -161,12 +263,20 @@ def path_to_node(coord, position, encoder_left, encoder_right):
             turn("reverse", pos_yaw)
         elif pos_yaw == 270:
             turn("right", pos_yaw)
-        while coord_y > pos_y:
-            set_motors(45, 45)
+
+        while coord_y > pos_y or junction == False:
+            line_follow(base_speed)
             position = update_position(encoder_left, encoder_right, "north", position)
             pos_y = position[1]
+            junction = junction_detection()
             print(f"positie y: {pos_y}")
-            time.sleep_ms(100)
+            if (coord_y - pos_y) < slow_down_distance:
+                base_speed = 40
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
         stop()
 
     elif coord_x == pos_x and coord_y < pos_y: # SOUTH
@@ -176,11 +286,20 @@ def path_to_node(coord, position, encoder_left, encoder_right):
             turn("right", pos_yaw)
         elif pos_yaw == 270:
             turn("left", pos_yaw)
-        set_motors(45, 45)
-        position = update_position(encoder_left, encoder_right, "south", position)
-        pos_y = position[1]
-        print(f"positie y: {pos_y}")
-        time.sleep_ms(100)
+        while coord_y < pos_y or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "south", position)
+            pos_y = position[1]
+            junction = junction_detection()
+            print(f"positie y: {pos_y}")
+            if (pos_y - coord_y) < slow_down_distance:
+                base_speed = 40
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
 
     elif coord_y == pos_y and coord_x > pos_x: # WEST
         if pos_yaw == 0:
@@ -189,68 +308,57 @@ def path_to_node(coord, position, encoder_left, encoder_right):
             turn("reverse", pos_yaw)
         elif pos_yaw == 180:
             turn("right", pos_yaw)
-        set_motors(45, 45)
-        position = update_position(encoder_left, encoder_right, "west", position)
-        pos_x = position[0]
-        print(f"positie x: {pos_x}")
-        time.sleep_ms(100)
+        while coord_x > pos_x or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "west", position)
+            pos_x = position[0]
+            junction = junction_detection()
+            print(f"positie y: {pos_x}")
+            if (coord_x - pos_x) < slow_down_distance:
+                base_speed = 50
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
 
-    elif coord_y == pos_y and coord_x > pos_x: #EAST
+    elif coord_y == pos_y and coord_x < pos_x: #EAST
         if pos_yaw == 0:
             turn("right", pos_yaw)
         elif pos_yaw == 180:
             turn("left", pos_yaw)
         elif pos_yaw == 270:
             turn("reverse", pos_yaw)
-        set_motors(45, 45)
-        position = update_position(encoder_left, encoder_right, "east", position)
-        pos_x = position[0]
-        print(f"positie x: {pos_x}")
-        time.sleep_ms(100)
+        while coord_x < pos_x or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "east", position)
+            pos_x = position[0]
+            junction = junction_detection()
+            print(f"positie x: {pos_x}")
+            if (pos_x - coord_x) < slow_down_distance:
+                base_speed = 50
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
     else:
         print("Error with coords")
 
     return
 
-
-
-# while True:
-#     path = path_finder.astar_path_as_object("A1", "E6", ["C2"])
-#     for node, coord in path.items():
-        # CHECK IF NODES ARE ON THE SAME Y AND SAME X AXIS AND IF THE NODES IN THE MIDDLE CAN BE SKIPPED? OR IF THERE ARE OBSTACLES IN THE WAY
-        # POP NODE FROM OBJECT
-coord = (0, 100)
-path_to_node(coord, position, encoder_left, encoder_right)
-
-
-
-
-#while True:
-#     print(f"previous position: {position}")
-#     position[2] = turn("left", position[2])
-#     print(f"updated position: {position}")
-#     time.sleep(5)
-    #print(f"previous position: {position}")
-    #position = update_position(encoder_left, encoder_right, "west", position)
-    #print(f"updated position: {position}")
-    #time.sleep_ms(100)
-    
-    # -------- update position -------
-    # print(f"encoder distance: {encoder_distance_left} | {encoder_distance_right}")
-    # print(f"previous position: {position}")
-    # position = update_position(encoder_distance_left, encoder_distance_right, "west", position)
-    # print(f"updated position: {position}")
-    # time.sleep_ms(10)
-    # encoder_left.value(0)
-    # encoder_right.value(0)
-    # time.sleep_ms(10)
-
-
-
-
-
-
-
-
-
-
+path = {'A5': (745, 0), 'B1': (745, 215), 'C2': (745, 365), "C1":(0,365)}
+path_order = ["A5", "B1", "C2", "C1"]
+print(path)
+while True:
+    for node in path_order:
+        coord = path[node]
+        print(path)
+        print(node)
+        print(coord)
+        print(position)
+        path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
+        position = [coord[0], coord[1], position[2]] #update position
+        path.pop(next(iter(path)))
