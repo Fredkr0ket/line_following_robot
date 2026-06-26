@@ -164,8 +164,10 @@ def path_to_node(coord, position, encoder_left, encoder_right):
         while coord_y > pos_y:
             set_motors(45, 45)
             position = update_position(encoder_left, encoder_right, "north", position)
-            pos_y = position[2]
-            time.sleep(100)
+            pos_y = position[1]
+            print(f"positie y: {pos_y}")
+            time.sleep_ms(100)
+        stop()
 
     elif coord_x == pos_x and coord_y < pos_y: # SOUTH
         if pos_yaw == 0:
@@ -174,6 +176,11 @@ def path_to_node(coord, position, encoder_left, encoder_right):
             turn("right", pos_yaw)
         elif pos_yaw == 270:
             turn("left", pos_yaw)
+        set_motors(45, 45)
+        position = update_position(encoder_left, encoder_right, "south", position)
+        pos_y = position[1]
+        print(f"positie y: {pos_y}")
+        time.sleep_ms(100)
 
     elif coord_y == pos_y and coord_x > pos_x: # WEST
         if pos_yaw == 0:
@@ -182,6 +189,11 @@ def path_to_node(coord, position, encoder_left, encoder_right):
             turn("reverse", pos_yaw)
         elif pos_yaw == 180:
             turn("right", pos_yaw)
+        set_motors(45, 45)
+        position = update_position(encoder_left, encoder_right, "west", position)
+        pos_x = position[0]
+        print(f"positie x: {pos_x}")
+        time.sleep_ms(100)
 
     elif coord_y == pos_y and coord_x > pos_x: #EAST
         if pos_yaw == 0:
@@ -190,28 +202,39 @@ def path_to_node(coord, position, encoder_left, encoder_right):
             turn("left", pos_yaw)
         elif pos_yaw == 270:
             turn("reverse", pos_yaw)
+        set_motors(45, 45)
+        position = update_position(encoder_left, encoder_right, "east", position)
+        pos_x = position[0]
+        print(f"positie x: {pos_x}")
+        time.sleep_ms(100)
     else:
         print("Error with coords")
 
-
-
-while True:
-    path = path_finder.astar_path_as_object("A1", "E6", ["C2"])
-    for node, coord in path.items():
-        # CHECK IF NODES ARE ON THE SAME Y AND SAME X AXIS AND IF THE NODES IN THE MIDDLE CAN BE SKIPPED? OR IF THERE ARE OBSTACLES IN THE WAY
-        path_to_node(coord, position, encoder_left, encoder_right)
-        # POP NODE FROM OBJECT
-
+    return
 
 
 
 # while True:
+#     path = path_finder.astar_path_as_object("A1", "E6", ["C2"])
+#     for node, coord in path.items():
+        # CHECK IF NODES ARE ON THE SAME Y AND SAME X AXIS AND IF THE NODES IN THE MIDDLE CAN BE SKIPPED? OR IF THERE ARE OBSTACLES IN THE WAY
+        # POP NODE FROM OBJECT
+coord = (0, 100)
+path_to_node(coord, position, encoder_left, encoder_right)
+
+
+
+
+#while True:
 #     print(f"previous position: {position}")
 #     position[2] = turn("left", position[2])
 #     print(f"updated position: {position}")
 #     time.sleep(5)
-
-
+    #print(f"previous position: {position}")
+    #position = update_position(encoder_left, encoder_right, "west", position)
+    #print(f"updated position: {position}")
+    #time.sleep_ms(100)
+    
     # -------- update position -------
     # print(f"encoder distance: {encoder_distance_left} | {encoder_distance_right}")
     # print(f"previous position: {position}")
@@ -221,6 +244,9 @@ while True:
     # encoder_left.value(0)
     # encoder_right.value(0)
     # time.sleep_ms(10)
+
+
+
 
 
 
