@@ -26,7 +26,7 @@ ir_sensors = [
 
 slow_down_distance = 50
 base_speed_robot = 70
-position = [1485,0,90] # [x, y, yaw]
+position = [450,0,0] # [x, y, yaw]
 
 # ================== Motors ==================
 class Motor:
@@ -349,9 +349,10 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
 
     return
 
-path = {'A5': (745, 0), 'B1': (745, 215), 'C2': (745, 365), "C1":(0,365)}
-path_order = ["A5", "B1", "C2", "C1"]
-print(path)
+path = path_finder.astar_path_as_object("A4", "B1")
+path.pop(next(iter(path)))
+path_order = path_finder.astar("A4", "B1")
+path_order.pop()
 while True:
     for node in path_order:
         coord = path[node]
