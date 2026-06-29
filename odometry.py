@@ -24,9 +24,11 @@ ir_sensors = [
     ADC(Pin(25)),  # sensor 5 - far right
 ]
 
-slow_down_distance = 50
-base_speed_robot = 70
-position = [450,0,0] # [x, y, yaw]
+slow_down_distance = 40
+base_speed_robot = 50
+position = [450,0,270] # [x, y, yaw]
+rotation_90 = 100
+rotation_180 = 200
 
 # ================== Motors ==================
 class Motor:
@@ -68,8 +70,7 @@ weights = [2, 1, 0, -1, -2]
 def read_line():
     line = []
     for s in ir_sensors:
-        print(s.read())
-        line.append(1 if s.read() < 3000 else 0)
+        line.append(1 if s.read() < 2000 else 0)
     return line
 
 def junction_detection():
@@ -80,6 +81,10 @@ def junction_detection():
     elif line == [1,1,1,0,0]:
         direction = True
     elif line == [0,1,1,1,0]:
+        direction = True
+    elif line == [0,1,1,1,1]:
+        direction = True
+    elif line == [1,1,1,1,0]:
         direction = True
     return direction
 
@@ -167,19 +172,18 @@ def stop():
 def read_encoder_distance():
     encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
     encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
-    encoder_distance_right = encoder_rotations_right * 157
-    encoder_distance_left = encoder_rotations_left * 157
+    encoder_distance_right = encoder_rotations_right * 200
+    encoder_distance_left = encoder_rotations_left * 200
     return encoder_distance_left, encoder_distance_right
 
-def turn(action, previous_yaw):
+def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
     encoder_distance_left, encoder_distance_right = read_encoder_distance()
     current_yaw = 0
 
     if action == "left":
-        left_turn_value_l = encoder_distance_left - 120
-        left_turn_value_r = encoder_distance_right + 120
-        print(f"left_value: {left_turn_value_l} right_value: {left_turn_value_r}")
-        print(f"encoder_distance_left: {encoder_distance_left} encoder_distance_right: {encoder_distance_right}")
+        print("TURNING LEFT")
+        left_turn_value_l = encoder_distance_left - encoder_distance_90
+        left_turn_value_r = encoder_distance_right + encoder_distance_90
 
         current_yaw = previous_yaw - 90
 
@@ -189,20 +193,24 @@ def turn(action, previous_yaw):
             time.sleep_ms(100)
 
         stop()
+        print("LEFT TURN FINISHED")
 
     elif action == "right":
-        right_turn_value_l = encoder_distance_left + 120
-        right_turn_value_r = encoder_distance_right - 120
+        print("TURNING RIGHT")
+        right_turn_value_l = encoder_distance_left + encoder_distance_90
+        right_turn_value_r = encoder_distance_right - encoder_distance_90
         current_yaw = previous_yaw + 90
         while encoder_distance_left < right_turn_value_l or encoder_distance_right > right_turn_value_r:
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
             set_motors(45, -45)
             time.sleep_ms(100)
         stop()
+        print("RIGHT TURN FINISHED")
 
     elif action == "reverse":
-        reverse_value_l = encoder_distance_left + 240
-        reverse_value_r = encoder_distance_right - 240
+        print("TURNING 180")
+        reverse_value_l = encoder_distance_left + encoder_distance_180
+        reverse_value_r = encoder_distance_right - encoder_distance_180
         current_yaw = previous_yaw + 180
         while encoder_distance_left < reverse_value_l or encoder_distance_right > reverse_value_r:
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
@@ -211,6 +219,7 @@ def turn(action, previous_yaw):
         stop()
     else:
         print("unknown action")
+        print("180 TURN FINISHED")
 
     if current_yaw == 360:
         current_yaw = 0
@@ -255,111 +264,136 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
     pos_yaw = position[2]
     coord_x = coord[0]
     coord_y = coord[1]
+    updated_position_arr = []
+    updated_yaw = None
 
     if coord_x == pos_x and coord_y > pos_y: # NORTH
+        print("going NORTH")
+        print(pos_yaw)
+        print(f"positie y: {pos_y}")
+        np[0] = (255, 0, 0)
+        np.write()
         if pos_yaw == 90:
-            turn("left", pos_yaw)
+            updated_yaw = turn("left", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 180:
-            turn("reverse", pos_yaw)
+            updated_yaw = turn("reverse", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 270:
-            turn("right", pos_yaw)
-
+            updated_yaw = turn("right", pos_yaw, rotation_90, rotation_180)
         while coord_y > pos_y or junction == False:
             line_follow(base_speed)
             position = update_position(encoder_left, encoder_right, "north", position)
             pos_y = position[1]
             junction = junction_detection()
-            print(f"positie y: {pos_y}")
             if (coord_y - pos_y) < slow_down_distance:
                 base_speed = 40
             time.sleep_ms(50)
-        set_motors(50,50)
-        np[0] = (255, 0, 0)
+        np[0] = (153, 0, 0)
         np.write()
-        time.sleep(1)
+        set_motors(45, 45)
+        time.sleep_ms(500)
+        print(f"positie y: {pos_y}")
         stop()
+        
 
     elif coord_x == pos_x and coord_y < pos_y: # SOUTH
+        print("goint SOUTH")
+        print(f"positie y: {pos_y}")
+        np[0] = (0, 255, 0)
+        np.write()
         if pos_yaw == 0:
-            turn("reverse", pos_yaw)
+            updated_yaw = turn("reverse", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 90:
-            turn("right", pos_yaw)
+            updated_yaw = turn("right", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 270:
-            turn("left", pos_yaw)
+            updated_yaw = turn("left", pos_yaw, rotation_90, rotation_180)
         while coord_y < pos_y or junction == False:
             line_follow(base_speed)
             position = update_position(encoder_left, encoder_right, "south", position)
             pos_y = position[1]
             junction = junction_detection()
-            print(f"positie y: {pos_y}")
             if (pos_y - coord_y) < slow_down_distance:
                 base_speed = 40
             time.sleep_ms(50)
-        set_motors(50,50)
-        np[0] = (255, 0, 0)
+        np[0] = (0, 153, 0)
+        set_motors(45, 45)
+        time.sleep_ms(500)
+        print(f"positie y: {pos_y}")
         np.write()
-        time.sleep(1)
+
         stop()
 
     elif coord_y == pos_y and coord_x > pos_x: # WEST
+        print("going WEST")
+        np[0] = (0, 0, 255)
+        print(f"positie x: {pos_x}")
+        np.write()
         if pos_yaw == 0:
-            turn("left", pos_yaw)
+            updated_yaw = turn("left", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 90:
-            turn("reverse", pos_yaw)
+            updated_yaw = turn("reverse", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 180:
-            turn("right", pos_yaw)
+            updated_yaw = turn("right", pos_yaw, rotation_90, rotation_180)
         while coord_x > pos_x or junction == False:
             line_follow(base_speed)
             position = update_position(encoder_left, encoder_right, "west", position)
             pos_x = position[0]
             junction = junction_detection()
-            print(f"positie y: {pos_x}")
+            
             if (coord_x - pos_x) < slow_down_distance:
                 base_speed = 50
             time.sleep_ms(50)
-        set_motors(50,50)
-        np[0] = (255, 0, 0)
+        np[0] = (0, 0, 153)
         np.write()
-        time.sleep(1)
+        set_motors(45, 45)
+        time.sleep_ms(500)
+        print(f"positie x: {pos_x}")
         stop()
 
     elif coord_y == pos_y and coord_x < pos_x: #EAST
+        print("going EAST")
+        print(f"positie x: {pos_x}")
+        np[0] = (255, 0, 255)
+        np.write()
         if pos_yaw == 0:
-            turn("right", pos_yaw)
+            updated_yaw = turn("right", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 180:
-            turn("left", pos_yaw)
+            updated_yaw = turn("left", pos_yaw, rotation_90, rotation_180)
         elif pos_yaw == 270:
-            turn("reverse", pos_yaw)
+            updated_yaw = turn("reverse", pos_yaw, rotation_90, rotation_180)
         while coord_x < pos_x or junction == False:
             line_follow(base_speed)
             position = update_position(encoder_left, encoder_right, "east", position)
             pos_x = position[0]
             junction = junction_detection()
-            print(f"positie x: {pos_x}")
             if (pos_x - coord_x) < slow_down_distance:
                 base_speed = 50
             time.sleep_ms(50)
-        set_motors(50,50)
-        np[0] = (255, 0, 0)
+        np[0] = (153, 0, 153)
         np.write()
-        time.sleep(1)
+        set_motors(45, 45)
+        time.sleep_ms(500)
+        print(f"positie x: {pos_x}")
         stop()
+        
     else:
         print("Error with coords")
+    
+    updated_position_arr = [coord[0], coord[1], pos_yaw if updated_yaw is None else updated_yaw]
 
-    return
+    return updated_position_arr
 
-path = path_finder.astar_path_as_object("A4", "B1")
-path.pop(next(iter(path)))
-path_order = path_finder.astar("A4", "B1")
-path_order.pop()
+path = path_finder.astar_path_as_object("A4", "C3", ["A6", "B2"])
+path_order = path_finder.astar("A4", "C3",["A6", "B2"])
+path.pop(path_order[0])
+path_order.pop(0)
+print(path["B1"])
+print(f"Path: {path} | Path_order: {path_order}")
 while True:
     for node in path_order:
+        print(f"node: {node}")
         coord = path[node]
-        print(path)
-        print(node)
-        print(coord)
-        print(position)
-        path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
-        position = [coord[0], coord[1], position[2]] #update position
-        path.pop(next(iter(path)))
+        print(f"coords to go to: {coord}")
+        print(f"current position: {position}")
+        position = path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
+        path.pop(node)
+
