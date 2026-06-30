@@ -10,7 +10,14 @@ np = neopixel.NeoPixel(machine.Pin(2), 1) # initialising the rgb
 
 states = ["path following", "box_pickup", "interrupt", "obstacle detected"]
 state = states[0]
+box_order_start = {"black":("E6"), "red":("E5"), "green":("E4"), "blue":("E3")} #starting order from left to right
+box_destination = {"black":("A4"), "red":("A3"), "green":("A2"), "blue":("A1")} #destinations of boxes
 blocked_nodes = []
+
+path = path_finder.astar_path_as_object("A4", "B1")
+path.pop(next(iter(path)))
+path_order = path_finder.astar("A4", "B1")
+path_order.pop()
 
 nodes = {
     "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
@@ -371,10 +378,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
 
     return
 
-path = path_finder.astar_path_as_object("A4", "B1")
-path.pop(next(iter(path)))
-path_order = path_finder.astar("A4", "B1")
-path_order.pop()
+
 
 def box_pickup(path_order, pickup_state):
     if pickup_state == "pickup":
@@ -388,34 +392,42 @@ def box_pickup(path_order, pickup_state):
     else:
         print("problem with magnet")
 
-def obstacle_detection(coord, path_order, heading):
+def obstacle_detection(coord, path_order, position):
     coord_x = coord[0]
     coord_y = coord[1]
     node1_x, node1_y = nodes[path_order[0]] #check coordinates of node 1
     node2_x, node2_y = nodes[path_order[1]] #check coordinates of node 2
     distance_to_node2 = None
     distance_mm = tof.read()
+    yaw = position[2]
+    
+    if yaw == 0:
+        heading = "north"
+    elif yaw == 90:
+        heading = "east"
+    elif yaw == 180:
+        heading = "south"
+    elif yaw == 270:
+        heading = "west"
+    else:
+        print("unknown yaw in obstacle detection")
 
     if heading == "north": #function to measure distance between coords and upcoming node to the north
         distance_to_node1 = node1_y - coord_y
         if len(path_order) >= 2 and node1_y - node2_y != 0:
             distance_to_node2 = node2_y - coord_y
-
     elif heading == "east": #function to measure distance between coords and upcoming node to the east
         distance_to_node1 = coord_x - node1_x
         if len(path_order) >= 2 and node1_x - node2_x != 0:
             distance_to_node2 = coord_x - node2_x
-
     elif heading == "south": #function to measure distance between coords and upcoming node to the south
         distance_to_node1 = coord_y - node1_y
         if len(path_order) >= 2 and node1_y - node2_y != 0:
             distance_to_node2 = coord_y - node2_y
-
     elif heading == "west": #function to measure distance between coords and upcoming node to the west
         distance_to_node1 = node1_x - coord_x
         if len(path_order) >= 2 and node1_x - node2_x != 0:
             distance_to_node2 = node2_x - coord_x 
-
     else: #debug function if heading is wrong
         print("wrong heading for obstacle detection")
 
@@ -425,7 +437,6 @@ def obstacle_detection(coord, path_order, heading):
         blocked_nodes.append(path_order[0]) #add the 1st node from array to blocked nodes
     else:
         print("error with obstacle detection")
-
     return blocked_nodes
 
 
@@ -452,13 +463,10 @@ while True:
             path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
             position = [coord[0], coord[1], position[2]] #update position
             path.pop(next(iter(path)))
-    elif state == states[1]:
-    elif state == states[2]:
+    elif state == states[1]: #box pickup
+    elif state == states[2]: #interrupt
     elif state == states[3]: #obstacle detection
-        obstacle_detection(coord, path_order, heading)
-        
-
-        
+        obstacle_detection(coord, path_order, position)
     else:
         print("no valid state")
 

@@ -20,27 +20,34 @@ def obstacle_detection(coord, path_order, heading):
     node2_x, node2_y = nodes[path_order[1]] #check coordinates of node 2
     distance_to_node2 = "no distance"
     print(f'Node1, X:{node1_x} Y:{ node1_y} Node2, X:{node2_x} Y:{ node2_y}') #print locations of node
-    if heading == "north":
+
+    if heading == "north": #function to measure distance between coords and upcoming node to the north
         distance_to_node1 = node1_y - coord_y
         if len(path_order) >= 2 and node1_y - node2_y != 0:
             distance_to_node2 = node2_y - coord_y
         print(f'Distance to N1: {distance_to_node1} Distance to N2: {distance_to_node2}')
-    elif heading == "east":
+
+    elif heading == "east": #function to measure distance between coords and upcoming node to the east
         distance_to_node1 = coord_x - node1_x
         if len(path_order) >= 2 and node1_x - node2_x != 0:
             distance_to_node2 = coord_x - node2_x
         print(f'Distance to N1: {distance_to_node1} Distance to N2: {distance_to_node2}')
-    elif heading == "south":
+
+    elif heading == "south": #function to measure distance between coords and upcoming node to the south
         distance_to_node1 = coord_y - node1_y
         if len(path_order) >= 2 and node1_y - node2_y != 0:
             distance_to_node2 = coord_y - node2_y
         print(f'Distance to N1: {distance_to_node1} Distance to N2: {distance_to_node2}')
-    elif heading == "west":
+
+    elif heading == "west": #function to measure distance between coords and upcoming node to the west
         distance_to_node1 = node1_x - coord_x
         if len(path_order) >= 2 and node1_x - node2_x != 0:
             distance_to_node2 = node2_x - coord_x
         print(f'Distance to N1: {distance_to_node1} Distance to N2: {distance_to_node2}') 
+
     else:
         print("wrong heading for obstacle detection")
+    
+    
 
 obstacle_detection(coord, path_order, heading)
