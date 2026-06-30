@@ -57,7 +57,7 @@ class Motor:
         elif speed < 0:
             self.a.duty(0)
             self.b.duty(duty)
-    
+
         else:
             self.a.duty(0)
             self.b.duty(0)
@@ -261,7 +261,6 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         current_yaw = 270
     return current_yaw
 
-
 def update_position(encoder_left, encoder_right, heading, previous_position):
     encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
     encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
@@ -290,7 +289,7 @@ def update_position(encoder_left, encoder_right, heading, previous_position):
     encoder_right.value(0)
     return current_position
 
-def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
+def move_to_node(coord, position, encoder_left, encoder_right, base_speed):
     pos_x = position[0]
     pos_y = position[1]
     pos_yaw = position[2]
@@ -401,7 +400,6 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
         time.sleep_ms(250)
         print(f"positie x: {pos_x}")
         stop()
-        
     else:
         print("Error with coords")
 
@@ -413,13 +411,27 @@ path = path_finder.astar_path_as_object(starting_node, ending_node, blocked_node
 path_order = path_finder.astar(starting_node, ending_node,blocked_nodes)
 path.pop(path_order[0])
 path_order.pop(0)
-print(path["B1"])
 print(f"Path: {path} | Path_order: {path_order}")
 while True:
-    for node in path_order:
-        print(f"node: {node}")
+    np[0] = (0, 255, 0)
+    np.write()
+    if len(path_order) > 0:
+
+        node = path_order[0]
         coord = path[node]
-        print(f"coords to go to: {coord}")
-        print(f"current position: {position}")
-        position = path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
+
+        print(f"Target node: {node}")
+        print(f"Current position: {position}")
+
+        # move_to_node should return only when the node is reached
+        position = move_to_node(
+            coord,
+            position,
+            encoder_left,
+            encoder_right,
+            base_speed_robot
+        )
+
+        # Remove completed node
         path.pop(node)
+        path_order.pop(0)
