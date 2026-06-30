@@ -1,13 +1,55 @@
-# robot_v1_line_following.py
-# Programmer: Ferdo van Balen
-
-# ================== IMPORTS ==================
+import machine
 from machine import Pin, PWM, I2C, ADC, Encoder
-from VL53L0X import VL53L0X
-import time
+from VL53L0X import VL53L0X as TOF
+import time, neopixel
+from pathfinder import PathFinder
 
+path_finder = PathFinder()
 
-# ================== MOTOR DRIVER ==================
+np = neopixel.NeoPixel(machine.Pin(2), 1) # initialising the rgb
+
+states = ["path following", "box_pickup", "interrupt", "obstacle detected"]
+state = states[0]
+
+nodes = {
+    "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
+    "D2":(745 ,515), "D1":(0,515),
+    "C3":(1485,365), "C2":(745,365), "C1":(0,365),
+    "B2":(1485,215), "B1":(745,215),
+    "A6":(1485,0), "A5":(745,0), "A4":(450,0), "A3":(300,0), "A2":(150,0), "A1":(0,0),
+}
+
+ir_sensors = [
+    ADC(Pin(13)),  # sensor 1 - far left
+    ADC(Pin(14)),  # sensor 2 - left
+    ADC(Pin(27)),  # sensor 3 - center
+    ADC(Pin(26)),  # sensor 4 - right
+    ADC(Pin(25)),  # sensor 5 - far right
+]
+
+#magnet pin
+magnet_pin = Pin(16, Pin.OUT)
+# Define I2C pins
+sda_pin = Pin(21)  # SDA pin
+scl_pin = Pin(22)  # SCL pin
+
+# Setup I2C bus
+i2c = I2C(0, sda=sda_pin, scl=scl_pin)
+
+print(i2c)
+print(i2c.scan())
+
+# Setup TOF sensor
+tof = TOF(i2c)
+
+# Start measuring
+tof.start()
+
+slow_down_distance = 50
+base_speed_robot = 70
+position = [450,0,0] # [x, y, yaw]
+
+# ================== Motors ==================
 class Motor:
     def __init__(self, pin_a, pin_b, freq=1000, reversed=False):
         self.a = PWM(Pin(pin_a), freq=freq)
@@ -41,37 +83,43 @@ class Motor:
         self.a.duty(1023)
         self.b.duty(1023)
 
-
-# ================== Motors ==================
-left_motor  = Motor(pin_a=18, pin_b=19, reversed=True)
-right_motor = Motor(pin_a=17, pin_b=5)
-
-def set_motors(left_speed, right_speed):
-    left_motor.run(left_speed)
-    right_motor.run(right_speed)
-
-def stop():
-    left_motor.stop()
-    right_motor.stop()
-
-# ================== IR SENSOR SETUP ==================
-ir_sensors = [
-    ADC(Pin(13)),  # sensor 1 - far left
-    ADC(Pin(14)),  # sensor 2 - left
-    ADC(Pin(27)),  # sensor 3 - center
-    ADC(Pin(26)),  # sensor 4 - right
-    ADC(Pin(25)),  # sensor 5 - far right
-]
-
-for s in ir_sensors:
-    s.atten(ADC.ATTN_11DB)
-
-# TOF SENSOR SETUP
-i2c = I2C(0, sda=Pin(21), scl=Pin(22))
-tof = VL53L0X(i2c)
-tof.start()
-
 # ================== PID CONTROLLER ==================
+weights = [2, 1, 0, -1, -2]
+
+def read_line():
+    line = []
+    for s in ir_sensors:
+        print(s.read())
+        line.append(1 if s.read() < 3000 else 0)
+    return line
+
+def junction_detection():
+    line = read_line()
+    direction = False
+    if line == [0,0,1,1,1]:
+        direction = True
+    elif line == [1,1,1,0,0]:
+        direction = True
+    elif line == [0,1,1,1,0]:
+        direction = True
+    return direction
+
+
+def get_error(line):
+    total = 0
+    count = 0
+
+    for i in range(5):
+        if line[i] == 1:
+            total += weights[i]
+            count += 1
+
+    if count == 0:
+        return 0 # TEST!!! should return None if no line is being seen (using 0 because test line is to thin to alwas be seen by one sensor)
+        #return None
+
+    return total / count
+
 class PID:
     def __init__(self, kp, ki, kd):
         self.kp = kp
@@ -95,10 +143,10 @@ class PID:
 
 
 pid = PID(kp=10, ki=0, kd=18)
-base_speed = 45
+
 
 # ================== LINE FOLLOWING ==================
-def line_follow():
+def line_follow(base_speed):
     line = read_line()
     error = get_error(line)
 
@@ -122,107 +170,84 @@ def line_follow():
 
     return True
 
-# ================== IR CALIBRATION ==================
-def calibrate_ir(surface_name):
-    print("STARTING IR CALIBRATION")
-    print(f"Hold sensor above {surface_name} surface!")
-    print("Starting in 3 seconds...")
-    # time.sleep(3)
-    print(f"Collecting {surface_name} data for 5 seconds!")
 
-    total = 0
-    count = 0
+left_motor  = Motor(pin_a=18, pin_b=19, reversed=True)
+right_motor = Motor(pin_a=17, pin_b=5)
 
-    for _ in range(50):
-        for s in ir_sensors:
-            total += s.read()
-            count += 1
-        time.sleep_ms(100)
-
-    avg = total // count
-    print(surface_name, "average:", avg)
-    return avg
-
-
-white = calibrate_ir("WHITE")
-black = calibrate_ir("BLACK")
-
-threshold = white + (black - white) // 2
-print("Threshold:", threshold)
-
-# ================== IR PROCESSING ==================
-weights = [2, 1, 0, -1, -2]
-
-def read_line():
-    line = []
-    for s in ir_sensors:
-        print(s.read())
-        line.append(1 if s.read() < 3000 else 0)
-    return line
-
-
-def get_error(line):
-    total = 0
-    count = 0
-
-    for i in range(5):
-        if line[i] == 1:
-            total += weights[i]
-            count += 1
-
-    if count == 0:
-        return 0 # TEST!!! should return None if no line is being seen (using 0 because test line is to thin to alwas be seen by one sensor)
-        #return None
-
-    return total / count
-
-# ================== TOF CALIBRATION ==================
-def calibrate_tof(distance):
-    print("STARTING ToF CALIBRATION")
-    print(f"Place robot {distance}mm infront of a white object")
-    print("Calibration starting in 5 seconds...")
-    # time.sleep(5)
-    print("Taking data from sensor data for 5 seconds")
-    error_sum = 0
-
-    for _ in range(50):
-        error_sum += tof.read() - distance
-        time.sleep_ms(100)
-
-    return error_sum // 50
-
-
-err_100 = calibrate_tof(100)
-err_300 = calibrate_tof(300)
-tof_error = (err_100 + err_300) // 2
-
-def get_distance():
-    return tof.read() - tof_error
-
-# ================== ENCODER ==================
-encoder_left = Encoder(0, Pin(35, Pin.IN), Pin(34, Pin.IN))   # Create second encoder for pins 32, 33 and begin counting
+encoder_left = Encoder(0, Pin(35, Pin.IN), Pin(34, Pin.IN))  # Create second encoder for pins 32, 33 and begin counting
 encoder_right = Encoder(1, Pin(32, Pin.IN), Pin(33, Pin.IN))   # Create first encoder for pins 34, 35 and begin counting
 
-# ================== COORDINATE SYSTEM ==================
-# pos_x = 0 # millimeters
-# pos_y = 0 # millimeters
-# pos_yaw = 0 # Degrees
+def set_motors(left_speed, right_speed):
+    left_motor.run(left_speed)
+    right_motor.run(right_speed)
 
-position = [0,0,0] # [x, y, yaw]
+def stop():
+    left_motor.stop()
+    right_motor.stop()
 
-def turn(action):
+def read_encoder_distance():
+    encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
+    encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
+    encoder_distance_right = encoder_rotations_right * 157
+    encoder_distance_left = encoder_rotations_left * 157
+    return encoder_distance_left, encoder_distance_right
+
+def turn(action, previous_yaw):
+    encoder_distance_left, encoder_distance_right = read_encoder_distance()
+    current_yaw = 0
+
     if action == "left":
-        set_motors(-45, 45)
+        left_turn_value_l = encoder_distance_left - 120
+        left_turn_value_r = encoder_distance_right + 120
+        print(f"left_value: {left_turn_value_l} right_value: {left_turn_value_r}")
+        print(f"encoder_distance_left: {encoder_distance_left} encoder_distance_right: {encoder_distance_right}")
+
+        current_yaw = previous_yaw - 90
+
+        while encoder_distance_left > left_turn_value_l or encoder_distance_right < left_turn_value_r:
+            encoder_distance_left, encoder_distance_right = read_encoder_distance()
+            set_motors(-45, 45)
+            time.sleep_ms(100)
+
+        stop()
+
     elif action == "right":
-        set_motors(45, -45)
+        right_turn_value_l = encoder_distance_left + 120
+        right_turn_value_r = encoder_distance_right - 120
+        current_yaw = previous_yaw + 90
+        while encoder_distance_left < right_turn_value_l or encoder_distance_right > right_turn_value_r:
+            encoder_distance_left, encoder_distance_right = read_encoder_distance()
+            set_motors(45, -45)
+            time.sleep_ms(100)
+        stop()
+
     elif action == "reverse":
-        set_motors(45, -45)
+        reverse_value_l = encoder_distance_left + 240
+        reverse_value_r = encoder_distance_right - 240
+        current_yaw = previous_yaw + 180
+        while encoder_distance_left < reverse_value_l or encoder_distance_right > reverse_value_r:
+            encoder_distance_left, encoder_distance_right = read_encoder_distance()
+            set_motors(45, -45)
+            time.sleep_ms(100)
+        stop()
     else:
         print("unknown action")
-    return
+
+    if current_yaw == 360:
+        current_yaw = 0
+    elif current_yaw > 360:
+        current_yaw = 90
+    elif current_yaw < 0:
+        current_yaw = 270
+    return current_yaw
+
 
 def update_position(encoder_left, encoder_right, heading, previous_position):
-    average_distance = (encoder_left + encoder_right) / 2
+    encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
+    encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
+    encoder_distance_right = encoder_rotations_right * 157
+    encoder_distance_left = encoder_rotations_left * 157
+    average_distance = (encoder_distance_left + encoder_distance_right) / 2
     current_position = list()
     current_pos_y = 0
     current_pos_x = 0
@@ -241,26 +266,184 @@ def update_position(encoder_left, encoder_right, heading, previous_position):
     else:
         print("unknown heading")
     current_position = [current_pos_x, current_pos_y, previous_yaw]
+    encoder_left.value(0)
+    encoder_right.value(0)
     return current_position
 
-# ================== MAIN LOOP (PID LINE FOLLOWING) ==================
+def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
+    pos_x = position[0]
+    pos_y = position[1]
+    pos_yaw = position[2]
+    coord_x = coord[0]
+    coord_y = coord[1]
+
+    if coord_x == pos_x and coord_y > pos_y: # NORTH
+        if pos_yaw == 90:
+            turn("left", pos_yaw)
+        elif pos_yaw == 180:
+            turn("reverse", pos_yaw)
+        elif pos_yaw == 270:
+            turn("right", pos_yaw)
+
+        while coord_y > pos_y or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "north", position)
+            pos_y = position[1]
+            junction = junction_detection()
+            print(f"positie y: {pos_y}")
+            if (coord_y - pos_y) < slow_down_distance:
+                base_speed = 40
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
+
+    elif coord_x == pos_x and coord_y < pos_y: # SOUTH
+        if pos_yaw == 0:
+            turn("reverse", pos_yaw)
+        elif pos_yaw == 90:
+            turn("right", pos_yaw)
+        elif pos_yaw == 270:
+            turn("left", pos_yaw)
+        while coord_y < pos_y or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "south", position)
+            pos_y = position[1]
+            junction = junction_detection()
+            print(f"positie y: {pos_y}")
+            if (pos_y - coord_y) < slow_down_distance:
+                base_speed = 40
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
+
+    elif coord_y == pos_y and coord_x > pos_x: # WEST
+        if pos_yaw == 0:
+            turn("left", pos_yaw)
+        elif pos_yaw == 90:
+            turn("reverse", pos_yaw)
+        elif pos_yaw == 180:
+            turn("right", pos_yaw)
+        while coord_x > pos_x or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "west", position)
+            pos_x = position[0]
+            junction = junction_detection()
+            print(f"positie y: {pos_x}")
+            if (coord_x - pos_x) < slow_down_distance:
+                base_speed = 50
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
+
+    elif coord_y == pos_y and coord_x < pos_x: #EAST
+        if pos_yaw == 0:
+            turn("right", pos_yaw)
+        elif pos_yaw == 180:
+            turn("left", pos_yaw)
+        elif pos_yaw == 270:
+            turn("reverse", pos_yaw)
+        while coord_x < pos_x or junction == False:
+            line_follow(base_speed)
+            position = update_position(encoder_left, encoder_right, "east", position)
+            pos_x = position[0]
+            junction = junction_detection()
+            print(f"positie x: {pos_x}")
+            if (pos_x - coord_x) < slow_down_distance:
+                base_speed = 50
+            time.sleep_ms(50)
+        set_motors(50,50)
+        np[0] = (255, 0, 0)
+        np.write()
+        time.sleep(1)
+        stop()
+    else:
+        print("Error with coords")
+
+    return
+
+path = path_finder.astar_path_as_object("A4", "B1")
+path.pop(next(iter(path)))
+path_order = path_finder.astar("A4", "B1")
+path_order.pop()
+
+def box_pickup(path_order, pickup_state):
+    if pickup_state == "pickup":
+
+    if len(path_order) == 0:
+        magnet_state = not magnet_state
+    if magnet_state == True:
+        magnet_pin.value(1)
+    elif magnet_state == False:
+        magnet_pin.value(0)
+    else:
+        print("problem with magnet")
+
+def obstacle_detection(coord, path_order, heading):
+    coord_x = coord[0]
+    coord_y = coord[1]
+    node_x, node_y = nodes[path_order[0]]
+
+    if heading == "north":
+        distance_to_node = node_y - coord_y
+    if heading == "east":
+        distance_to_node = node_x - coord_x
+    if heading == "south":
+        distance_to_node = coord_y - node_y
+    if heading == "west":
+        distance_to_node = coord_y - node_y
+    else:
+        print("wrong heading for obstacle detection")
+
+    
+
+
 while True:
-
-    # Drive forward while following the line
-    if not line_follow():
-        print("Line lost")
-
-    # Read ToF
-    distance = get_distance()
-    print("Distance:", distance)
+    #=================See==============#
 
 
-    # ---------- TOF ----------
-    distance = get_distance()
-    print("Distance:", distance, "mm")
-
-    time.sleep_ms(50)
-
-
+    #================Think=============#
+    if len(path_order) == 0: #box_pickup, if the array is empty switch to box pickup state
+        state = states[1]
+    elif tof.read() < 300 and state != states[1]: #obstacle detection, inactive when box_pickup is active
+        state = states[4]
 
 
+    #=================Act==============#
+    if state == states[0]: #drive straight forward using PID
+        for node in path_order:
+            coord = path[node]
+            print(path)
+            print(node)
+            print(coord)
+            print(position)
+            path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
+            position = [coord[0], coord[1], position[2]] #update position
+            path.pop(next(iter(path)))
+    elif state == states[1]:
+    elif state == states[2]:
+    elif state == states[3]: #obstacle detection
+        obstacle_detetection(True)
+        
+
+        
+    else:
+        print("no valid state")
+
+    for node in path_order:
+        coord = path[node]
+        print(path)
+        print(node)
+        print(coord)
+        print(position)
+        path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
+        position = [coord[0], coord[1], position[2]] #update position
+        path.pop(next(iter(path)))
