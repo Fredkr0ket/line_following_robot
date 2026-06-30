@@ -57,7 +57,7 @@ class Motor:
         elif speed < 0:
             self.a.duty(0)
             self.b.duty(duty)
-
+    
         else:
             self.a.duty(0)
             self.b.duty(0)
@@ -178,8 +178,8 @@ def stop():
 def read_encoder_distance():
     encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
     encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
-    encoder_distance_right = encoder_rotations_right * 180
-    encoder_distance_left = encoder_rotations_left * 180
+    encoder_distance_right = encoder_rotations_right * 220
+    encoder_distance_left = encoder_rotations_left * 220
     return encoder_distance_left, encoder_distance_right
 
 def outer_sensor_trigger(action):
@@ -187,11 +187,11 @@ def outer_sensor_trigger(action):
 
     # LEFT TURN → use far left sensor
     if action == "left":
-        return line[0] == 1
+        return line[0] == 1 and line[1] == 1
 
     # RIGHT TURN → use far right sensor
     elif action == "right":
-        return line[4] == 1
+        return line[4] == 1 and line[3] == 1
 
     # REVERSE (180°) → use both outer sensors MAYBE REMOVE THISDUE TO A FULL JUNCTION THEN STOPPING ONLYU AT 90 DEGREES
     elif action == "reverse":
@@ -211,12 +211,12 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         current_yaw = previous_yaw - 90
 
         while encoder_distance_left > left_turn_value_l or encoder_distance_right < left_turn_value_r:
-            if outer_sensor_trigger("left"):
-                print("LEFT TURN STOPPED BY IR")
-                break
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
             set_motors(-40, 40)
             time.sleep_ms(100)
+            if outer_sensor_trigger("left"):
+                print("LEFT TURN STOPPED BY IR")
+                break
 
         stop()
         print("LEFT TURN FINISHED")
@@ -227,12 +227,12 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         right_turn_value_r = encoder_distance_right - encoder_distance_90
         current_yaw = previous_yaw + 90
         while encoder_distance_left < right_turn_value_l or encoder_distance_right > right_turn_value_r:
-            if outer_sensor_trigger("right"):
-                print("RIGHT TURN STOPPED BY IR")
-                break
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
             set_motors(40, -40)
             time.sleep_ms(100)
+            if outer_sensor_trigger("right"):
+                print("RIGHT TURN STOPPED BY IR")
+                break
         stop()
         print("RIGHT TURN FINISHED")
 
@@ -242,12 +242,12 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         reverse_value_r = encoder_distance_right - encoder_distance_180
         current_yaw = previous_yaw + 180
         while encoder_distance_left < reverse_value_l or encoder_distance_right > reverse_value_r:
-            if outer_sensor_trigger("reverse"):
-                print("180 TURN STOPPED BY IR")
-                break
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
             set_motors(40, -40)
             time.sleep_ms(100)
+            if outer_sensor_trigger("reverse"):
+                print("180 TURN STOPPED BY IR")
+                break
         stop()
     else:
         print("unknown action")
@@ -321,7 +321,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
             time.sleep_ms(50)
         np[0] = (153, 0, 0)
         np.write()
-
+        time.sleep_ms(250)
         print(f"positie y: {pos_y}")
         stop()
         
@@ -346,7 +346,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
                 base_speed = 40
             time.sleep_ms(50)
         np[0] = (0, 153, 0)
-
+        time.sleep_ms(250)
         print(f"positie y: {pos_y}")
         np.write()
 
@@ -368,13 +368,12 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
             position = update_position(encoder_left, encoder_right, "west", position)
             pos_x = position[0]
             junction = junction_detection()
-            
             if (coord_x - pos_x) < slow_down_distance:
                 base_speed = 50
             time.sleep_ms(50)
         np[0] = (0, 0, 153)
         np.write()
-
+        time.sleep_ms(250)
         print(f"positie x: {pos_x}")
         stop()
 
@@ -399,13 +398,13 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
             time.sleep_ms(50)
         np[0] = (153, 0, 153)
         np.write()
-
+        time.sleep_ms(250)
         print(f"positie x: {pos_x}")
         stop()
         
     else:
         print("Error with coords")
-    
+
     updated_position_arr = [coord[0], coord[1], pos_yaw if updated_yaw is None else updated_yaw]
 
     return updated_position_arr
@@ -424,5 +423,3 @@ while True:
         print(f"current position: {position}")
         position = path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
         path.pop(node)
-
-
