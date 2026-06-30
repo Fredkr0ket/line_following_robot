@@ -25,10 +25,16 @@ ir_sensors = [
 ]
 
 slow_down_distance = 40
-base_speed_robot = 50
+base_speed_robot = 40
 position = [450,0,270] # [x, y, yaw]
 rotation_90 = 100
 rotation_180 = 200
+blocked_nodes = ["A6", "B2"]
+starting_node = "A4"
+ending_node = "C3"
+kp = 14
+ki = 0
+kd = 16
 
 # ================== Motors ==================
 class Motor:
@@ -70,7 +76,7 @@ weights = [2, 1, 0, -1, -2]
 def read_line():
     line = []
     for s in ir_sensors:
-        line.append(1 if s.read() < 2000 else 0)
+        line.append(1 if s.read() < 2500 else 0)
     return line
 
 def junction_detection():
@@ -126,7 +132,7 @@ class PID:
         return output
 
 
-pid = PID(kp=10, ki=0, kd=18)
+pid = PID(kp=kp, ki=ki, kd=kd)
 
 
 # ================== LINE FOLLOWING ==================
@@ -155,8 +161,8 @@ def line_follow(base_speed):
     return True
 
 
-left_motor  = Motor(pin_a=18, pin_b=19, reversed=True)
-right_motor = Motor(pin_a=17, pin_b=5)
+left_motor  = Motor(pin_a=18, pin_b=19)
+right_motor = Motor(pin_a=17, pin_b=5, reversed=True)
 
 encoder_left = Encoder(0, Pin(35, Pin.IN), Pin(34, Pin.IN))  # Create second encoder for pins 32, 33 and begin counting
 encoder_right = Encoder(1, Pin(32, Pin.IN), Pin(33, Pin.IN))   # Create first encoder for pins 34, 35 and begin counting
@@ -172,9 +178,26 @@ def stop():
 def read_encoder_distance():
     encoder_rotations_right = encoder_right.value() / 960 #Calculating rotations of first encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
     encoder_rotations_left = encoder_left.value() / 960 #Calculating rotations of second encoder by dividing the value with the number of times the magnetic wheel has to turn for 1 rotation
-    encoder_distance_right = encoder_rotations_right * 200
-    encoder_distance_left = encoder_rotations_left * 200
+    encoder_distance_right = encoder_rotations_right * 180
+    encoder_distance_left = encoder_rotations_left * 180
     return encoder_distance_left, encoder_distance_right
+
+def outer_sensor_trigger(action):
+    line = read_line()
+
+    # LEFT TURN → use far left sensor
+    if action == "left":
+        return line[0] == 1
+
+    # RIGHT TURN → use far right sensor
+    elif action == "right":
+        return line[4] == 1
+
+    # REVERSE (180°) → use both outer sensors MAYBE REMOVE THISDUE TO A FULL JUNCTION THEN STOPPING ONLYU AT 90 DEGREES
+    elif action == "reverse":
+        return line[0] == 1 or line[4] == 1
+
+    return False
 
 def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
     encoder_distance_left, encoder_distance_right = read_encoder_distance()
@@ -188,8 +211,11 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         current_yaw = previous_yaw - 90
 
         while encoder_distance_left > left_turn_value_l or encoder_distance_right < left_turn_value_r:
+            if outer_sensor_trigger("left"):
+                print("LEFT TURN STOPPED BY IR")
+                break
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
-            set_motors(-45, 45)
+            set_motors(-40, 40)
             time.sleep_ms(100)
 
         stop()
@@ -201,8 +227,11 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         right_turn_value_r = encoder_distance_right - encoder_distance_90
         current_yaw = previous_yaw + 90
         while encoder_distance_left < right_turn_value_l or encoder_distance_right > right_turn_value_r:
+            if outer_sensor_trigger("right"):
+                print("RIGHT TURN STOPPED BY IR")
+                break
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
-            set_motors(45, -45)
+            set_motors(40, -40)
             time.sleep_ms(100)
         stop()
         print("RIGHT TURN FINISHED")
@@ -213,8 +242,11 @@ def turn(action, previous_yaw, encoder_distance_90, encoder_distance_180):
         reverse_value_r = encoder_distance_right - encoder_distance_180
         current_yaw = previous_yaw + 180
         while encoder_distance_left < reverse_value_l or encoder_distance_right > reverse_value_r:
+            if outer_sensor_trigger("reverse"):
+                print("180 TURN STOPPED BY IR")
+                break
             encoder_distance_left, encoder_distance_right = read_encoder_distance()
-            set_motors(45, -45)
+            set_motors(40, -40)
             time.sleep_ms(100)
         stop()
     else:
@@ -289,8 +321,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
             time.sleep_ms(50)
         np[0] = (153, 0, 0)
         np.write()
-        set_motors(45, 45)
-        time.sleep_ms(500)
+
         print(f"positie y: {pos_y}")
         stop()
         
@@ -315,8 +346,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
                 base_speed = 40
             time.sleep_ms(50)
         np[0] = (0, 153, 0)
-        set_motors(45, 45)
-        time.sleep_ms(500)
+
         print(f"positie y: {pos_y}")
         np.write()
 
@@ -344,8 +374,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
             time.sleep_ms(50)
         np[0] = (0, 0, 153)
         np.write()
-        set_motors(45, 45)
-        time.sleep_ms(500)
+
         print(f"positie x: {pos_x}")
         stop()
 
@@ -370,8 +399,7 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
             time.sleep_ms(50)
         np[0] = (153, 0, 153)
         np.write()
-        set_motors(45, 45)
-        time.sleep_ms(500)
+
         print(f"positie x: {pos_x}")
         stop()
         
@@ -382,8 +410,8 @@ def path_to_node(coord, position, encoder_left, encoder_right, base_speed):
 
     return updated_position_arr
 
-path = path_finder.astar_path_as_object("A4", "C3", ["A6", "B2"])
-path_order = path_finder.astar("A4", "C3",["A6", "B2"])
+path = path_finder.astar_path_as_object(starting_node, ending_node, blocked_nodes)
+path_order = path_finder.astar(starting_node, ending_node,blocked_nodes)
 path.pop(path_order[0])
 path_order.pop(0)
 print(path["B1"])
@@ -396,4 +424,5 @@ while True:
         print(f"current position: {position}")
         position = path_to_node(coord, position, encoder_left, encoder_right, base_speed_robot)
         path.pop(node)
+
 
