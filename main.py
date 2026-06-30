@@ -10,6 +10,7 @@ np = neopixel.NeoPixel(machine.Pin(2), 1) # initialising the rgb
 
 states = ["path following", "box_pickup", "interrupt", "obstacle detected"]
 state = states[0]
+blocked_nodes = []
 
 nodes = {
     "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
@@ -390,20 +391,42 @@ def box_pickup(path_order, pickup_state):
 def obstacle_detection(coord, path_order, heading):
     coord_x = coord[0]
     coord_y = coord[1]
-    node_x, node_y = nodes[path_order[0]]
+    node1_x, node1_y = nodes[path_order[0]] #check coordinates of node 1
+    node2_x, node2_y = nodes[path_order[1]] #check coordinates of node 2
+    distance_to_node2 = None
+    distance_mm = tof.read()
 
-    if heading == "north":
-        distance_to_node = node_y - coord_y
-    if heading == "east":
-        distance_to_node = node_x - coord_x
-    if heading == "south":
-        distance_to_node = coord_y - node_y
-    if heading == "west":
-        distance_to_node = coord_y - node_y
-    else:
+    if heading == "north": #function to measure distance between coords and upcoming node to the north
+        distance_to_node1 = node1_y - coord_y
+        if len(path_order) >= 2 and node1_y - node2_y != 0:
+            distance_to_node2 = node2_y - coord_y
+
+    elif heading == "east": #function to measure distance between coords and upcoming node to the east
+        distance_to_node1 = coord_x - node1_x
+        if len(path_order) >= 2 and node1_x - node2_x != 0:
+            distance_to_node2 = coord_x - node2_x
+
+    elif heading == "south": #function to measure distance between coords and upcoming node to the south
+        distance_to_node1 = coord_y - node1_y
+        if len(path_order) >= 2 and node1_y - node2_y != 0:
+            distance_to_node2 = coord_y - node2_y
+
+    elif heading == "west": #function to measure distance between coords and upcoming node to the west
+        distance_to_node1 = node1_x - coord_x
+        if len(path_order) >= 2 and node1_x - node2_x != 0:
+            distance_to_node2 = node2_x - coord_x 
+
+    else: #debug function if heading is wrong
         print("wrong heading for obstacle detection")
 
-    
+    if  distance_to_node2 != None and  distance_mm > (distance_to_node1 * 1.1): #check if distance to node 2 exists and if the obstacle is between node1 and node2 with 10% marge
+        blocked_nodes.append(path_order[1]) #add the 2nd node from array to blocked nodes
+    elif  distance_mm <= (distance_to_node1 * 1.1):
+        blocked_nodes.append(path_order[0]) #add the 1st node from array to blocked nodes
+    else:
+        print("error with obstacle detection")
+
+    return blocked_nodes
 
 
 while True:
@@ -415,6 +438,7 @@ while True:
         state = states[1]
     elif tof.read() < 300 and state != states[1]: #obstacle detection, inactive when box_pickup is active
         state = states[4]
+    
 
 
     #=================Act==============#
@@ -431,7 +455,7 @@ while True:
     elif state == states[1]:
     elif state == states[2]:
     elif state == states[3]: #obstacle detection
-        obstacle_detetection(True)
+        obstacle_detection(coord, path_order, heading)
         
 
         
