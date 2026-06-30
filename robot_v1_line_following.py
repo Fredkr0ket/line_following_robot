@@ -118,11 +118,11 @@ def calibrate_ir(surface_name):
     return avg
 
 
-white = calibrate_ir("WHITE")
-black = calibrate_ir("BLACK")
+# white = calibrate_ir("WHITE")
+# black = calibrate_ir("BLACK")
 
-threshold = white + (black - white) // 2
-print("Threshold:", threshold)
+# threshold = white + (black - white) // 2
+# print("Threshold:", threshold)
 
 # ================== IR PROCESSING ==================
 weights = [2, 1, 0, -1, -2]
@@ -131,7 +131,7 @@ def read_line():
     line = []
     for s in ir_sensors:
         print(s.read())
-        line.append(1 if s.read() < 3000 else 0)
+        line.append(1 if s.read() < 1000 else 0)
     return line
 
 
@@ -151,27 +151,27 @@ def get_error(line):
     return total / count
 
 # ================== TOF CALIBRATION ==================
-def calibrate_tof(distance):
-    print("STARTING ToF CALIBRATION")
-    print(f"Place robot {distance}mm infront of a white object")
-    print("Calibration starting in 5 seconds...")
-    time.sleep(5)
-    print("Taking data from sensor data for 5 seconds")
-    error_sum = 0
+# def calibrate_tof(distance):
+#     print("STARTING ToF CALIBRATION")
+#     print(f"Place robot {distance}mm infront of a white object")
+#     print("Calibration starting in 5 seconds...")
+#     time.sleep(5)
+#     print("Taking data from sensor data for 5 seconds")
+#     error_sum = 0
 
-    for _ in range(50):
-        error_sum += tof.read() - distance
-        time.sleep_ms(100)
+#     for _ in range(50):
+#         error_sum += tof.read() - distance
+#         time.sleep_ms(100)
 
-    return error_sum // 50
+#     return error_sum // 50
 
 
-err_100 = calibrate_tof(100)
-err_300 = calibrate_tof(300)
-tof_error = (err_100 + err_300) // 2
+# err_100 = calibrate_tof(100)
+# err_300 = calibrate_tof(300)
+# tof_error = (err_100 + err_300) // 2
 
-def get_distance():
-    return tof.read() - tof_error
+# def get_distance():
+#     return tof.read() - tof_error
 
 # ================== MAIN LOOP (PID LINE FOLLOWING) ==================
 while True:
@@ -212,8 +212,8 @@ while True:
         print("Line lost")
 
     # ---------- TOF ----------
-    distance = get_distance()
-    print("Distance:", distance, "mm")
+    # distance = get_distance()
+    # print("Distance:", distance, "mm")
 
     time.sleep_ms(100)
 

@@ -8,7 +8,7 @@ nodes = {
     "A6":(1485,0), "A5":(745,0), "A4":(450,0), "A3":(300,0), "A2":(150,0), "A1":(0,0),
 }
 
-path_order = ['B1', 'C2']
+path_order = ['A6', 'A5']
 
 heading = "south"
 coord = [1485, 215]
@@ -28,15 +28,17 @@ def obstacle_detection(coord, path_order, heading):
         distance_to_node1 = coord_x - node1_x
         if len(path_order) >= 2:
             distance_to_node2 = coord_x - node2_x
-        print(distance_to_node1)
+        print(distance_to_node1, distance_to_node2)
     elif heading == "south":
         distance_to_node1 = coord_y - node1_y
         if len(path_order) >= 2:
             distance_to_node2 = coord_x - node2_x
-        print(distance_to_node1)
+        print(distance_to_node1, distance_to_node2)
     elif heading == "west":
         distance_to_node1 = coord_y - node1_y
-        print(distance_to_node1) 
+        if len(path_order) >= 2:
+            distance_to_node2 = coord_x - node2_x
+        print(distance_to_node1, distance_to_node2) 
     else:
         print("wrong heading for obstacle detection")
 
