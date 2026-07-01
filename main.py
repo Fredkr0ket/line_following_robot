@@ -16,11 +16,11 @@ box_order_start = ["E6", "E5", "E4", "A1"]  # destinations of boxes #starting or
 box_destination = ["A4", "A3", "A2", "A1"]  # destinations of boxes #destinations of boxes black, red, green, blue
 slow_down_distance = 40
 base_speed_robot = 40
-position = [745,365,0] # [x, y, yaw]
-rotation_90 = 100
+position = [1485,365,0] # [x, y, yaw]
+rotation_90 = 150
 rotation_180 = 300
 blocked_nodes = []
-starting_node = "C2"
+starting_node = "C3"
 ending_node = "E6"
 # ending_node = box_destination["black"]
 kp = 14
@@ -572,7 +572,6 @@ while True:
             set_motors(base_speed_robot, base_speed_robot)
         path_order.pop(0)
         state = states[0]
-        
         time.sleep(10)
     
     elif state == "recalibrate_path":
@@ -593,6 +592,7 @@ while True:
     
     else:
         print("no valid state")
+
 
 
 
