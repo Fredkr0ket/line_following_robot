@@ -16,11 +16,11 @@ box_order_start = ["E6", "E5", "E4", "A1"]  # destinations of boxes #starting or
 box_destination = ["A4", "A3", "A2", "A1"]  # destinations of boxes #destinations of boxes black, red, green, blue
 slow_down_distance = 40
 base_speed_robot = 40
-position = [1485,365,0] # [x, y, yaw]
+position = [450,0,270] # [x, y, yaw]
 rotation_90 = 150
 rotation_180 = 300
 blocked_nodes = []
-starting_node = "C3"
+starting_node = "A4"
 ending_node = "E6"
 # ending_node = box_destination["black"]
 kp = 14
@@ -28,7 +28,7 @@ ki = 0
 kd = 16
 line_value = 1750
 previous_node = ""
-coord_tolerance = 50
+coord_tolerance = 100
 
 path = path_finder.astar_path_as_object(starting_node, ending_node, blocked_nodes)
 path_order = path_finder.astar(starting_node, ending_node,blocked_nodes)
@@ -37,7 +37,7 @@ path_order.pop(0)
 print(f"Path: {path} | Path_order: {path_order}")
 
 # NODES MAP
-nodes = {
+snodes = {
     "E6":(1485,730), "E5":(1330,730), "E4":(1180,730), "E3":(1030,730), "E2":(745,730), "E1":(0,730),
     "D2":(745 ,515), "D1":(0,515),
     "C3":(1485,365), "C2":(745,365), "C1":(0,365),
@@ -354,7 +354,6 @@ def move_to_node(coord, position, encoder_left, encoder_right, base_speed):
             pos_y = position[1]
             junction = junction_detection()
             time.sleep_ms(10)
-
         time.sleep_ms(250)
 
         stop()
@@ -425,12 +424,12 @@ def move_to_node(coord, position, encoder_left, encoder_right, base_speed):
 
     return updated_position_arr
 
-def box_detection():
+def box_detection(status):
     while tof.read() > 70:
         line_follow(base_speed_robot)
         time.sleep_ms(10)
     stop()
-    magnet_pin.value(1)
+    magnet_pin.value(status)
     print("TURN MAGNET ON")
     time.sleep(5)
 
@@ -503,6 +502,8 @@ while True:
         state = states[3]
 
     #=================Act==============#
+    print(path)
+    print(path_order)
     if state == "path_following":
         np[0] = (0, 255, 0)
         np.write()
@@ -535,45 +536,50 @@ while True:
         if previous_node[0] == "A":
             box_destination.pop(0)
             path_order = path_finder.astar(previous_node, box_order_start[0], blocked_nodes)
+            ath= path_finder.astar_path_as_object(previous_node, box_order_start[0], blocked_nodes)
             if position[2] == 90:
                 position[2] = turn("right", position[2])
-                box_detection()
             elif position == 0:
                 position[2] = turn("reverse", position[2])
-                box_detection()
             elif position == 270:
                 position[2] = turn("left", position[2])
-                box_detection()
-            elif position[2] == 180:
-                box_detection()
-            if distance_tof <= 30:
-                magnet_pin.value(0)
+            set_motors(40,40)
+            time.sleep_ms(2000)
+            magnet_pin.value(0)
+            stop()
+            set_motors(-40, -40)
+            time.sleep_ms(2000)
+            stop()
+            position[2] = turn("reverse", position[2])            
+            
 
         elif previous_node[0] == "E":
             box_order_start.pop(0)
             path_order = path_finder.astar(previous_node, box_destination[0], blocked_nodes)
-
+            path= path_finder.astar_path_as_object(previous_node, box_destination[0], blocked_nodes)
+            print(f"path: {path} | path_order: {path_order}")
             if position[2] == 90:
                 position[2] = turn("left", position[2])
-                box_detection()
+                box_detection(1)
             elif position[2] == 180:
                 position[2] = turn("reverse", position[2])
-                box_detection()
+                box_detection(1)
             elif position[2] == 270:
                 position[2] = turn("right", position[2])
-                box_detection()
+                box_detection(1)
             elif position[2] == 0:
-                box_detection()
-        set_motors(-40, -40)
-        time.sleep_ms(2000)
-        stop()
-        turn("reverse", position[2])
-        while junction_detection() == False:
-            set_motors(base_speed_robot, base_speed_robot)
-        path_order.pop(0)
-        state = states[0]
-        time.sleep(10)
-    
+                box_detection(1)
+            stop()
+            position[2] = turn("reverse", position[2])
+            junction_detected = False
+            while junction_detected == False:
+                line_follow(60)
+                junction_detected = junction_detection()
+                print(line)
+                stop()
+            path_order.pop(0)
+            state = states[0]
+        
     elif state == "recalibrate_path":
         stop()
         continue
@@ -592,6 +598,7 @@ while True:
     
     else:
         print("no valid state")
+
 
 
 
